@@ -1,0 +1,537 @@
+openapi: 3.0.3
+info:
+  title: Simple CRM API
+  description: >
+    Backend API expected by the Simple CRM frontend (`_frontend/crm-service.js`,
+    consumed by `_frontend/Simple CRM.dc.html`). Mirrors the shape of
+    `createMockService()` one-for-one: a real HTTP implementation should expose
+    the same operations, request/response shapes and validation errors.
+
+    The frontend does not implement any authentication (no tokens, headers, or
+    login flow appear anywhere in its code), so no endpoint currently requires
+    it. Every path below is unauthenticated for this MVP.
+  version: "1.0.0"
+servers:
+  - url: /api
+
+tags:
+  - name: Pipeline
+  - name: Contacts
+  - name: Deals
+  - name: Activities
+
+paths:
+  /pipeline:
+    get:
+      tags: [Pipeline]
+      operationId: getPipeline
+      summary: Get the single pipeline's stage list
+      description: >
+        Backs `getPipeline()`. The MVP has exactly one pipeline; stages are
+        returned in display order.
+      security: []
+      responses:
+        "200":
+          description: The pipeline definition
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Pipeline"
+
+  /contacts:
+    get:
+      tags: [Contacts]
+      operationId: listContacts
+      summary: Search and filter contacts
+      description: >
+        Backs `listContacts(query)`. Returns contacts sorted by name.
+        `search` matches against name, email, or company (case-insensitive,
+        substring). `tags` filters to contacts that have every listed tag.
+      security: []
+      parameters:
+        - name: search
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Free-text match against name, email, or company.
+        - name: tags
+          in: query
+          required: false
+          style: form
+          explode: false
+          schema:
+            type: array
+            items:
+              type: string
+          description: Comma-separated list of tags; a contact must have all of them.
+      responses:
+        "200":
+          description: Matching contacts
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Contact"
+    post:
+      tags: [Contacts]
+      operationId: createContact
+      summary: Create a contact
+      description: Backs `createContact(input)`.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ContactInput"
+      responses:
+        "201":
+          description: The created contact
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Contact"
+        "400":
+          description: >
+            Validation failed (e.g. "Contact name is required" or
+            "Contact company is required" — every contact must belong to
+            exactly one company).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /contacts/{contactId}:
+    parameters:
+      - name: contactId
+        in: path
+        required: true
+        schema:
+          type: string
+    get:
+      tags: [Contacts]
+      operationId: getContact
+      summary: Get a single contact
+      description: Backs `getContact(cid)`.
+      security: []
+      responses:
+        "200":
+          description: The contact
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Contact"
+        "404":
+          description: No contact with that id.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+    patch:
+      tags: [Contacts]
+      operationId: updateContact
+      summary: Edit a contact
+      description: Backs `updateContact(cid, patch)`. Only supplied fields are changed.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ContactInput"
+      responses:
+        "200":
+          description: The updated contact
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Contact"
+        "400":
+          description: >
+            Validation failed (e.g. name or company left blank when
+            provided in the patch).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: No contact with that id.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /contacts/{contactId}/activities:
+    parameters:
+      - name: contactId
+        in: path
+        required: true
+        schema:
+          type: string
+    get:
+      tags: [Activities]
+      operationId: listActivities
+      summary: Get a contact's activity history
+      description: >
+        Backs `listActivities(cid)`. Returns activities for this contact only,
+        newest first. Activities are never attached to deals directly.
+      security: []
+      responses:
+        "200":
+          description: The contact's activities
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Activity"
+        "404":
+          description: No contact with that id.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /tags:
+    get:
+      tags: [Contacts]
+      operationId: listTags
+      summary: List every tag currently in use across contacts
+      description: Backs `listTags()`. Used to render tag filter chips.
+      security: []
+      responses:
+        "200":
+          description: Distinct tags, sorted alphabetically
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: string
+
+  /deals:
+    get:
+      tags: [Deals]
+      operationId: listDeals
+      summary: List deals, optionally filtered
+      description: >
+        Backs `listDeals(query)`. Used both for the per-contact deal list
+        (`contactId` filter) and the pipeline board (`stage` filter, or no
+        filter to load everything). Each deal is enriched with the owning
+        contact's name and company for display.
+      security: []
+      parameters:
+        - name: contactId
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: stage
+          in: query
+          required: false
+          schema:
+            $ref: "#/components/schemas/Stage"
+      responses:
+        "200":
+          description: Matching deals
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Deal"
+
+    post:
+      tags: [Deals]
+      operationId: createDeal
+      summary: Create a deal from a contact
+      description: >
+        Backs `createDeal(input)`. A deal always belongs to exactly one
+        contact; if `stage` is omitted it defaults to the pipeline's first
+        stage ("Lead").
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DealInput"
+      responses:
+        "201":
+          description: The created deal
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Deal"
+        "400":
+          description: >
+            Validation failed (e.g. "A deal must belong to a contact",
+            "No contact with id …", "Deal title is required", or an unknown
+            stage name).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /deals/{dealId}:
+    parameters:
+      - name: dealId
+        in: path
+        required: true
+        schema:
+          type: string
+    get:
+      tags: [Deals]
+      operationId: getDeal
+      summary: Get a single deal
+      description: Backs `getDeal(did)`.
+      security: []
+      responses:
+        "200":
+          description: The deal
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Deal"
+        "404":
+          description: No deal with that id.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+    patch:
+      tags: [Deals]
+      operationId: updateDeal
+      summary: Edit a deal, or manually move it between pipeline stages
+      description: >
+        Backs `updateDeal(did, patch)` and `moveDeal(did, stage)` — moving a
+        deal (including to "Won" or "Lost", which are ordinary stages with no
+        separate workflow) is just a patch of `stage` on this same endpoint.
+        Stage changes are always manual; nothing else is triggered.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DealInput"
+      responses:
+        "200":
+          description: The updated deal
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Deal"
+        "400":
+          description: >
+            Validation failed (e.g. blank title, unknown stage, missing
+            contactId, or reassignment to a contact that does not exist).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: No deal with that id.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /activities:
+    post:
+      tags: [Activities]
+      operationId: createActivity
+      summary: Record an activity against a contact
+      description: >
+        Backs `createActivity(input)`. An activity always belongs to exactly
+        one contact and can never be attached directly to a deal. If `at` is
+        omitted, the server should stamp the current time.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ActivityInput"
+      responses:
+        "201":
+          description: The created activity
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Activity"
+        "400":
+          description: >
+            Validation failed (e.g. "An activity must belong to a contact",
+            "No contact with id …", unknown activity type, or a blank note).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+components:
+  schemas:
+    Stage:
+      type: string
+      description: >
+        One of the single pipeline's stages. "Won" and "Lost" are ordinary
+        stages, not a separate win/loss workflow. The MVP ships with this
+        conventional, minimal set; it is not multiple pipelines.
+      enum: [Lead, Qualified, Proposal, Negotiation, Won, Lost]
+
+    ActivityType:
+      type: string
+      enum: [Call, Email, Meeting, Note]
+
+    Pipeline:
+      type: object
+      required: [stages]
+      properties:
+        stages:
+          type: array
+          items:
+            $ref: "#/components/schemas/Stage"
+
+    Contact:
+      type: object
+      description: A person. Every contact belongs to exactly one company (a field, not a separate entity).
+      required: [id, name, email, phone, company, jobTitle, address, website, tags]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        email:
+          type: string
+        phone:
+          type: string
+        company:
+          type: string
+          description: The contact's company. Not a separate domain entity.
+        jobTitle:
+          type: string
+        address:
+          type: string
+        website:
+          type: string
+        tags:
+          type: array
+          items:
+            type: string
+
+    ContactInput:
+      type: object
+      description: >
+        Body for creating or editing a contact. `name` and `company` are
+        required when creating a contact; on edit, any field left out is
+        unchanged, but if included it may not be blank for `name`/`company`.
+      properties:
+        name:
+          type: string
+        email:
+          type: string
+        phone:
+          type: string
+        company:
+          type: string
+        jobTitle:
+          type: string
+        address:
+          type: string
+        website:
+          type: string
+        tags:
+          description: Either an array of tags or a single comma-separated string.
+          oneOf:
+            - type: array
+              items:
+                type: string
+            - type: string
+
+    Deal:
+      type: object
+      description: A sales opportunity. Every deal belongs to exactly one contact.
+      required: [id, contactId, title, value, stage, expectedClose]
+      properties:
+        id:
+          type: string
+        contactId:
+          type: string
+        title:
+          type: string
+        value:
+          type: number
+        stage:
+          $ref: "#/components/schemas/Stage"
+        expectedClose:
+          type: string
+          format: date
+        contactName:
+          type: string
+          readOnly: true
+          description: Denormalized from the owning contact, for display in list views.
+        company:
+          type: string
+          readOnly: true
+          description: Denormalized from the owning contact, for display in list views.
+
+    DealInput:
+      type: object
+      description: >
+        Body for creating or editing a deal. `contactId` and `title` are
+        required when creating; `stage` defaults to the pipeline's first
+        stage if omitted.
+      properties:
+        title:
+          type: string
+        value:
+          type: number
+        stage:
+          $ref: "#/components/schemas/Stage"
+        contactId:
+          type: string
+        expectedClose:
+          type: string
+          format: date
+
+    Activity:
+      type: object
+      description: An interaction with a contact. Never attached directly to a deal.
+      required: [id, contactId, type, note, at]
+      properties:
+        id:
+          type: string
+        contactId:
+          type: string
+        type:
+          $ref: "#/components/schemas/ActivityType"
+        note:
+          type: string
+        at:
+          type: string
+          format: date-time
+
+    ActivityInput:
+      type: object
+      required: [contactId, type, note]
+      properties:
+        contactId:
+          type: string
+        type:
+          $ref: "#/components/schemas/ActivityType"
+        note:
+          type: string
+        at:
+          type: string
+          format: date-time
+          description: Defaults to the current time if omitted.
+
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string
+          description: Human-readable message, matching the mock service's thrown errors.

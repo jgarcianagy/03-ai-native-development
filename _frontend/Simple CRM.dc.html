@@ -1,0 +1,551 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Caprasimo&family=Figtree:wght@400;500;600;700&display=swap">
+<link rel="stylesheet" href="_ds/organic-103e147d-99da-4ba2-98c9-6b3adb18baf2/styles.css">
+<script src="_ds/organic-103e147d-99da-4ba2-98c9-6b3adb18baf2/_ds_bundle.js"></script>
+<style>
+  body { margin: 0; background: var(--color-bg); color: var(--color-text); font-family: var(--font-body); }
+  a { color: var(--color-accent-700); text-decoration: none; }
+  a:hover { color: var(--color-accent-800); text-decoration: underline; }
+  ::-webkit-scrollbar { width: 10px; height: 10px; }
+  ::-webkit-scrollbar-thumb { background: var(--color-neutral-300); border-radius: 999px; }
+  .crm-row:hover { background: var(--color-neutral-100); }
+  .crm-card:hover { box-shadow: var(--shadow-md); transform: translateY(-1px); }
+</style>
+</helmet>
+
+<div style="min-height: 100vh; display: flex; flex-direction: column; background: var(--color-bg); font-family: var(--font-body); color: var(--color-text)">
+
+  <header style="display: flex; align-items: center; gap: 26.4px; padding: 17.6px 26.4px; border-bottom: 1px solid var(--color-divider); flex-wrap: wrap">
+    <div style="display: flex; align-items: baseline; gap: 8.8px">
+      <span style="width: 26px; height: 26px; border-radius: 999px; background: var(--color-accent); display: inline-block"></span>
+      <span style="font-family: var(--font-heading); font-size: 24px; line-height: 1">Clay</span>
+    </div>
+    <nav style="display: flex; gap: 4.4px; margin-left: auto">
+      <button class="btn btn-ghost" onClick="{{ goContacts }}" style="{{ tabContacts }}">Contacts</button>
+      <button class="btn btn-ghost" onClick="{{ goDeals }}" style="{{ tabDeals }}">Deals</button>
+      <sc-if value="{{ testsEnabled }}" hint-placeholder-val="{{ true }}">
+        <button class="btn btn-ghost" onClick="{{ goTests }}" style="{{ tabTests }}">Tests</button>
+      </sc-if>
+    </nav>
+  </header>
+
+  <sc-if value="{{ isContacts }}" hint-placeholder-val="{{ true }}">
+    <div style="flex: 1; display: grid; grid-template-columns: minmax(0, 340px) minmax(0, 1fr); align-items: start; min-height: 0">
+
+      <section style="border-right: 1px solid var(--color-divider); padding: 26.4px 17.6px; display: flex; flex-direction: column; gap: 17.6px; min-height: calc(100vh - 78px)">
+        <div style="display: flex; align-items: center; justify-content: space-between; gap: 8.8px">
+          <h1 style="font-family: var(--font-heading); font-size: 28px; margin: 0; font-weight: 400">Contacts</h1>
+          <button class="btn btn-primary" onClick="{{ newContact }}">New</button>
+        </div>
+        <input class="input" type="search" placeholder="Name, email or company" value="{{ search }}" onInput="{{ onSearch }}" aria-label="Search contacts">
+        <div style="display: flex; flex-wrap: wrap; gap: 4.4px">
+          <sc-for list="{{ tagChips }}" as="chip" hint-placeholder-count="6">
+            <button class="tag" onClick="{{ chip.onClick }}" style="{{ chip.style }}">{{ chip.label }}</button>
+          </sc-for>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 4.4px">
+          <sc-for list="{{ contactRows }}" as="row" hint-placeholder-count="8">
+            <button class="crm-row" onClick="{{ row.onOpen }}" style="{{ row.style }}">
+              <span style="width: 38px; height: 38px; flex: none; border-radius: 999px; background: var(--color-accent-200); color: var(--color-accent-800); display: grid; place-items: center; font-weight: 600; font-size: 13px">{{ row.initials }}</span>
+              <span style="display: flex; flex-direction: column; gap: 2px; min-width: 0; text-align: left">
+                <span style="font-weight: 600; font-size: 15px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">{{ row.name }}</span>
+                <span style="font-size: 13px; color: var(--color-neutral-700); overflow: hidden; text-overflow: ellipsis; white-space: nowrap">{{ row.company }}</span>
+              </span>
+            </button>
+          </sc-for>
+        </div>
+        <sc-if value="{{ noContacts }}" hint-placeholder-val="{{ false }}">
+          <p style="font-size: 14px; color: var(--color-neutral-700); margin: 0">No contacts match that search.</p>
+        </sc-if>
+      </section>
+
+      <section style="padding: 26.4px 35.2px 52px; min-width: 0">
+        <sc-if value="{{ hasDetail }}" hint-placeholder-val="{{ true }}">
+          <div style="display: flex; flex-direction: column; gap: 26.4px; max-width: 880px">
+
+            <div style="display: flex; align-items: flex-start; gap: 17.6px; flex-wrap: wrap">
+              <div style="min-width: 0; display: flex; flex-direction: column; gap: 8.8px">
+                <h2 style="font-family: var(--font-heading); font-size: 36px; margin: 0; font-weight: 400; line-height: 1.1">{{ detailName }}</h2>
+                <p style="margin: 0; font-size: 16px; color: var(--color-neutral-700)">{{ detailRole }}</p>
+                <div style="display: flex; flex-wrap: wrap; gap: 4.4px; margin-top: 4.4px">
+                  <sc-for list="{{ detailTags }}" as="t" hint-placeholder-count="2">
+                    <span class="tag tag-accent-2">{{ t }}</span>
+                  </sc-for>
+                </div>
+              </div>
+              <div style="margin-left: auto; display: flex; gap: 8.8px">
+                <button class="btn btn-secondary" onClick="{{ editContact }}">Edit</button>
+                <button class="btn btn-primary" onClick="{{ newDeal }}">New deal</button>
+              </div>
+            </div>
+
+            <div class="card" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 17.6px">
+              <sc-for list="{{ detailFields }}" as="f" hint-placeholder-count="5">
+                <div style="display: flex; flex-direction: column; gap: 2px; min-width: 0">
+                  <span style="font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--color-neutral-600)">{{ f.label }}</span>
+                  <span style="font-size: 15px; overflow-wrap: anywhere">{{ f.value }}</span>
+                </div>
+              </sc-for>
+            </div>
+
+            <div style="display: flex; flex-direction: column; gap: 13.2px">
+              <h3 style="font-family: var(--font-heading); font-size: 22px; margin: 0; font-weight: 400">Deals</h3>
+              <sc-for list="{{ detailDeals }}" as="d" hint-placeholder-count="2">
+                <div style="display: flex; align-items: center; gap: 13.2px; padding: 13.2px 17.6px; background: var(--color-neutral-100); border-radius: 16px; flex-wrap: wrap">
+                  <span style="font-weight: 600; font-size: 15px">{{ d.title }}</span>
+                  <span class="tag" style="{{ d.stageStyle }}">{{ d.stage }}</span>
+                  <span style="margin-left: auto; font-size: 15px; color: var(--color-neutral-700)">{{ d.valueText }}</span>
+                  <span style="font-size: 13px; color: var(--color-neutral-600)">closes {{ d.closeText }}</span>
+                </div>
+              </sc-for>
+              <sc-if value="{{ noDetailDeals }}" hint-placeholder-val="{{ false }}">
+                <p style="margin: 0; font-size: 14px; color: var(--color-neutral-700)">No deals yet for this contact.</p>
+              </sc-if>
+            </div>
+
+            <div style="display: flex; flex-direction: column; gap: 13.2px">
+              <h3 style="font-family: var(--font-heading); font-size: 22px; margin: 0; font-weight: 400">Activity</h3>
+              <div class="card" style="display: flex; flex-direction: column; gap: 13.2px">
+                <div class="seg" style="align-self: flex-start">
+                  <sc-for list="{{ activityTypes }}" as="t" hint-placeholder-count="4">
+                    <button class="seg-opt" onClick="{{ t.onClick }}" style="{{ t.style }}">{{ t.label }}</button>
+                  </sc-for>
+                </div>
+                <textarea class="input" rows="2" placeholder="What happened?" value="{{ actNote }}" onInput="{{ onActNote }}" style="resize: vertical; font-family: var(--font-body)"></textarea>
+                <div style="display: flex; align-items: center; gap: 13.2px">
+                  <button class="btn btn-primary" onClick="{{ logActivity }}">Log activity</button>
+                  <sc-if value="{{ hasActError }}" hint-placeholder-val="{{ false }}">
+                    <span style="font-size: 14px; color: var(--color-accent-700)">{{ actError }}</span>
+                  </sc-if>
+                </div>
+              </div>
+              <sc-for list="{{ detailActivities }}" as="a" hint-placeholder-count="3">
+                <div style="display: flex; gap: 13.2px; padding: 8.8px 0; border-bottom: 1px solid var(--color-divider)">
+                  <span class="tag" style="{{ a.typeStyle }}">{{ a.type }}</span>
+                  <span style="flex: 1; min-width: 0; font-size: 15px; text-wrap: pretty">{{ a.note }}</span>
+                  <span style="font-size: 13px; color: var(--color-neutral-600); white-space: nowrap">{{ a.when }}</span>
+                </div>
+              </sc-for>
+              <sc-if value="{{ noDetailActivities }}" hint-placeholder-val="{{ false }}">
+                <p style="margin: 0; font-size: 14px; color: var(--color-neutral-700)">Nothing recorded yet.</p>
+              </sc-if>
+            </div>
+          </div>
+        </sc-if>
+        <sc-if value="{{ noDetail }}" hint-placeholder-val="{{ false }}">
+          <div style="display: flex; flex-direction: column; gap: 8.8px; padding: 88px 0; max-width: 380px">
+            <span style="width: 64px; height: 64px; border-radius: 999px; background: var(--color-accent-2-200)"></span>
+            <h2 style="font-family: var(--font-heading); font-size: 28px; margin: 13.2px 0 0; font-weight: 400">Pick a contact</h2>
+            <p style="margin: 0; color: var(--color-neutral-700); font-size: 16px; text-wrap: pretty">Their details, activity history and open deals appear here.</p>
+          </div>
+        </sc-if>
+      </section>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{ isDeals }}" hint-placeholder-val="{{ false }}">
+    <section style="padding: 26.4px 26.4px 52px; display: flex; flex-direction: column; gap: 17.6px; min-width: 0">
+      <div style="display: flex; align-items: baseline; gap: 17.6px; flex-wrap: wrap">
+        <h1 style="font-family: var(--font-heading); font-size: 32px; margin: 0; font-weight: 400">Pipeline</h1>
+        <p style="margin: 0; color: var(--color-neutral-700); font-size: 15px">{{ pipelineSummary }}</p>
+      </div>
+      <div style="display: flex; gap: 13.2px; align-items: flex-start; overflow-x: auto; padding-bottom: 13.2px">
+        <sc-for list="{{ columns }}" as="col" hint-placeholder-count="6">
+          <div onDragOver="{{ col.onDragOver }}" onDragLeave="{{ col.onDragLeave }}" onDrop="{{ col.onDrop }}" style="{{ col.style }}">
+            <div style="display: flex; align-items: baseline; justify-content: space-between; gap: 8.8px; padding: 0 4.4px 8.8px">
+              <span style="font-family: var(--font-heading); font-size: 17px; font-weight: 400">{{ col.stage }}</span>
+              <span style="font-size: 13px; color: var(--color-neutral-700)">{{ col.meta }}</span>
+            </div>
+            <sc-for list="{{ col.deals }}" as="d" hint-placeholder-count="2">
+              <div class="card crm-card" draggable="true" onDragStart="{{ d.onDragStart }}" onDragEnd="{{ d.onDragEnd }}" style="{{ d.style }}">
+                <span style="font-weight: 600; font-size: 15px; text-wrap: pretty">{{ d.title }}</span>
+                <span style="font-size: 14px; color: var(--color-neutral-700)">{{ d.valueText }}</span>
+                <button class="btn btn-ghost" onClick="{{ d.onOpenContact }}" style="align-self: flex-start; padding: 2px 8.8px; font-size: 13px; height: auto; min-height: 0">{{ d.contactName }}</button>
+              </div>
+            </sc-for>
+            <sc-if value="{{ col.empty }}" hint-placeholder-val="{{ false }}">
+              <p style="margin: 0; padding: 17.6px 4.4px; font-size: 13px; color: var(--color-neutral-600)">Drop a deal here.</p>
+            </sc-if>
+          </div>
+        </sc-for>
+      </div>
+    </section>
+  </sc-if>
+
+  <sc-if value="{{ isTests }}" hint-placeholder-val="{{ false }}">
+    <section style="padding: 26.4px 35.2px 52px; display: flex; flex-direction: column; gap: 17.6px; max-width: 900px">
+      <div style="display: flex; align-items: center; gap: 17.6px; flex-wrap: wrap">
+        <h1 style="font-family: var(--font-heading); font-size: 32px; margin: 0; font-weight: 400">Tests</h1>
+        <span class="tag" style="{{ testSummaryStyle }}">{{ testSummary }}</span>
+        <button class="btn btn-secondary" onClick="{{ runTests }}" style="margin-left: auto">Run again</button>
+      </div>
+      <p style="margin: 0; color: var(--color-neutral-700); font-size: 15px; max-width: 60ch; text-wrap: pretty">Each test runs against a fresh zero-latency mock service, so the suite covers the same services layer the screens call.</p>
+      <sc-for list="{{ testGroups }}" as="g" hint-placeholder-count="5">
+        <div style="display: flex; flex-direction: column; gap: 4.4px">
+          <h3 style="font-family: var(--font-heading); font-size: 19px; margin: 13.2px 0 4.4px; font-weight: 400">{{ g.name }}</h3>
+          <sc-for list="{{ g.rows }}" as="r" hint-placeholder-count="3">
+            <div style="display: flex; align-items: flex-start; gap: 13.2px; padding: 8.8px 13.2px; border-radius: 16px; background: var(--color-neutral-100)">
+              <span style="{{ r.dotStyle }}"></span>
+              <span style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px">
+                <span style="font-size: 15px">{{ r.name }}</span>
+                <sc-if value="{{ r.failed }}" hint-placeholder-val="{{ false }}">
+                  <span style="font-size: 13px; color: var(--color-accent-700); font-family: ui-monospace, monospace">{{ r.error }}</span>
+                </sc-if>
+              </span>
+              <span style="font-size: 12px; color: var(--color-neutral-600)">{{ r.ms }}</span>
+            </div>
+          </sc-for>
+        </div>
+      </sc-for>
+    </section>
+  </sc-if>
+
+  <sc-if value="{{ showForm }}" hint-placeholder-val="{{ false }}">
+    <div class="dialog-backdrop" style="position: fixed; inset: 0; display: grid; place-items: center; padding: 26.4px; z-index: 20">
+      <div class="dialog" style="width: min(560px, 100%); max-height: 86vh; overflow: auto">
+        <h2 class="dialog-title" style="font-family: var(--font-heading); font-weight: 400">{{ formTitle }}</h2>
+        <div class="dialog-body" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 13.2px">
+          <sc-for list="{{ formFields }}" as="f" hint-placeholder-count="6">
+            <label class="field" style="{{ f.wrapStyle }}">
+              <span>{{ f.label }}</span>
+              <sc-if value="{{ f.isSelect }}" hint-placeholder-val="{{ false }}">
+                <select class="input" name="{{ f.name }}" value="{{ f.value }}" onChange="{{ onFieldChange }}">
+                  <sc-for list="{{ f.options }}" as="o" hint-placeholder-count="6">
+                    <option value="{{ o }}">{{ o }}</option>
+                  </sc-for>
+                </select>
+              </sc-if>
+              <sc-if value="{{ f.isText }}" hint-placeholder-val="{{ true }}">
+                <input class="input" type="{{ f.type }}" name="{{ f.name }}" value="{{ f.value }}" placeholder="{{ f.placeholder }}" onInput="{{ onFieldChange }}">
+              </sc-if>
+            </label>
+          </sc-for>
+        </div>
+        <sc-if value="{{ hasFormError }}" hint-placeholder-val="{{ false }}">
+          <p style="margin: 8.8px 0 0; font-size: 14px; color: var(--color-accent-700)">{{ formError }}</p>
+        </sc-if>
+        <div class="dialog-actions" style="display: flex; gap: 8.8px; justify-content: flex-end; margin-top: 17.6px">
+          <button class="btn btn-ghost" onClick="{{ closeForm }}">Cancel</button>
+          <button class="btn btn-primary" onClick="{{ submitForm }}">{{ formSubmitLabel }}</button>
+        </div>
+      </div>
+    </div>
+  </sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;showTests&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Behaviour&quot;},&quot;defaultSection&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;Contacts&quot;,&quot;Deals&quot;],&quot;default&quot;:&quot;Contacts&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Behaviour&quot;}}">
+const STAGE_TONE = {
+  Lead: ["var(--color-neutral-200)", "var(--color-neutral-800)"],
+  Qualified: ["var(--color-accent-200)", "var(--color-accent-800)"],
+  Proposal: ["var(--color-accent-300)", "var(--color-accent-900)"],
+  Negotiation: ["var(--color-accent-2-300)", "var(--color-accent-2-900)"],
+  Won: ["var(--color-accent-2-500)", "#fff"],
+  Lost: ["var(--color-neutral-400)", "var(--color-neutral-900)"],
+};
+const TYPE_TONE = {
+  Call: ["var(--color-accent-200)", "var(--color-accent-800)"],
+  Email: ["var(--color-accent-2-200)", "var(--color-accent-2-800)"],
+  Meeting: ["var(--color-accent-300)", "var(--color-accent-900)"],
+  Note: ["var(--color-neutral-200)", "var(--color-neutral-800)"],
+};
+const money = (n) => "€" + Number(n || 0).toLocaleString("en-US");
+const initials = (name) => String(name).split(/\s+/).slice(0, 2).map((p) => p[0] || "").join("").toUpperCase();
+const dateText = (iso) => {
+  if (!iso) return "—";
+  const d = new Date(iso.length > 10 ? iso : iso + "T00:00:00Z");
+  if (isNaN(d)) return iso;
+  return d.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
+};
+
+class Component extends DCLogic {
+  state = {
+    view: "contacts", search: "", activeTags: [], contacts: [], tags: [], stages: [],
+    selectedId: null, contact: null, activities: [], contactDeals: [], allDeals: [],
+    actType: "Call", actNote: "", actError: "",
+    form: null, formError: "", dragging: null, dragOver: null,
+    tests: [], testsRan: false, loaded: false,
+  };
+
+  async componentDidMount() {
+    const base = document.baseURI;
+    const mod = await import(new URL("./crm-service.js", base).href);
+    this.api = mod.createHttpService();
+    this.STAGES = mod.STAGES;
+    this.TYPES = mod.ACTIVITY_TYPES;
+    this.testsMod = await import(new URL("./crm-tests.js", base).href);
+    const view = this.props.defaultSection === "Deals" ? "deals" : "contacts";
+    this.setState({ stages: mod.STAGES, view });
+    await this.refreshContacts(true);
+    await this.refreshDeals();
+  }
+
+  async refreshContacts(selectFirst) {
+    const [contacts, tags] = await Promise.all([
+      this.api.listContacts({ search: this.state.search, tags: this.state.activeTags }),
+      this.api.listTags(),
+    ]);
+    this.setState({ contacts, tags, loaded: true });
+    if (selectFirst && !this.state.selectedId && contacts.length) this.select(contacts[0].id);
+  }
+
+  async refreshDeals() {
+    this.setState({ allDeals: await this.api.listDeals() });
+  }
+
+  async select(id) {
+    this.setState({ selectedId: id, actNote: "", actError: "" });
+    const [contact, activities, contactDeals] = await Promise.all([
+      this.api.getContact(id), this.api.listActivities(id), this.api.listDeals({ contactId: id }),
+    ]);
+    this.setState({ contact, activities, contactDeals });
+  }
+
+  async reloadSelected() {
+    if (this.state.selectedId) await this.select(this.state.selectedId);
+  }
+
+  onSearch = (e) => { this.setState({ search: e.target.value }, () => this.refreshContacts(false)); };
+
+  toggleTag = (tag) => {
+    const next = this.state.activeTags.includes(tag)
+      ? this.state.activeTags.filter((t) => t !== tag)
+      : this.state.activeTags.concat(tag);
+    this.setState({ activeTags: next }, () => this.refreshContacts(false));
+  };
+
+  openContactForm(contact) {
+    const c = contact || {};
+    this.setState({
+      formError: "",
+      form: {
+        kind: "contact", id: c.id || null,
+        values: {
+          name: c.name || "", company: c.company || "", jobTitle: c.jobTitle || "",
+          email: c.email || "", phone: c.phone || "", website: c.website || "",
+          address: c.address || "", tags: (c.tags || []).join(", "),
+        },
+      },
+    });
+  }
+
+  openDealForm() {
+    this.setState({
+      formError: "",
+      form: { kind: "deal", id: null, values: { title: "", value: "", stage: this.STAGES[0], expectedClose: "" } },
+    });
+  }
+
+  onFieldChange = (e) => {
+    const { name, value } = e.target;
+    this.setState((s) => ({ form: Object.assign({}, s.form, { values: Object.assign({}, s.form.values, { [name]: value }) }) }));
+  };
+
+  submitForm = async () => {
+    const form = this.state.form;
+    const v = form.values;
+    try {
+      if (form.kind === "contact") {
+        const payload = Object.assign({}, v, { tags: v.tags });
+        const saved = form.id ? await this.api.updateContact(form.id, payload) : await this.api.createContact(payload);
+        this.setState({ form: null, formError: "" });
+        await this.refreshContacts(false);
+        await this.select(saved.id);
+        await this.refreshDeals();
+      } else {
+        await this.api.createDeal(Object.assign({}, v, { contactId: this.state.selectedId }));
+        this.setState({ form: null, formError: "" });
+        await this.reloadSelected();
+        await this.refreshDeals();
+      }
+    } catch (err) {
+      this.setState({ formError: err.message });
+    }
+  };
+
+  logActivity = async () => {
+    try {
+      await this.api.createActivity({ contactId: this.state.selectedId, type: this.state.actType, note: this.state.actNote });
+      this.setState({ actNote: "", actError: "" });
+      await this.reloadSelected();
+    } catch (err) {
+      this.setState({ actError: err.message });
+    }
+  };
+
+  drop = async (stage) => {
+    const id = this.state.dragging;
+    this.setState({ dragging: null, dragOver: null });
+    if (!id) return;
+    await this.api.moveDeal(id, stage);
+    await this.refreshDeals();
+    await this.reloadSelected();
+  };
+
+  runTests = async () => {
+    this.setState({ view: "tests", tests: [], testsRan: false });
+    const results = await this.testsMod.runTests();
+    this.setState({ tests: results, testsRan: true });
+  };
+
+  tab(name) {
+    const on = this.state.view === name;
+    return `border-radius: 999px; font-weight: 600; ${on ? "background: var(--color-accent); color: #fff;" : "color: var(--color-neutral-800);"}`;
+  }
+
+  tagStyle(pair, on) {
+    return `background: ${pair[0]}; color: ${pair[1]}; border: none; ${on ? "" : ""}`;
+  }
+
+  renderVals() {
+    const s = this.state;
+    const stages = s.stages.length ? s.stages : ["Lead", "Qualified", "Proposal", "Negotiation", "Won", "Lost"];
+    const testsEnabled = this.props.showTests ?? true;
+
+    const contactRows = s.contacts.map((c) => ({
+      id: c.id, name: c.name, company: c.company, initials: initials(c.name),
+      onOpen: () => this.select(c.id),
+      style: `display: flex; align-items: center; gap: 13.2px; width: 100%; padding: 8.8px; border: none; border-radius: 16px; cursor: pointer; text-align: left; font-family: inherit; color: inherit; background: ${c.id === s.selectedId ? "var(--color-neutral-200)" : "transparent"};`,
+    }));
+
+    const tagChips = s.tags.map((t) => {
+      const on = s.activeTags.includes(t);
+      return {
+        label: t, onClick: () => this.toggleTag(t),
+        style: `cursor: pointer; border: 1px solid var(--color-divider); font-family: inherit; ${on ? "background: var(--color-accent); color: #fff; border-color: transparent;" : "background: transparent; color: var(--color-neutral-800);"}`,
+      };
+    });
+
+    const c = s.contact;
+    const detailFields = c ? [
+      { label: "Email", value: c.email || "—" },
+      { label: "Phone", value: c.phone || "—" },
+      { label: "Website", value: c.website || "—" },
+      { label: "Company", value: c.company || "—" },
+      { label: "Address", value: c.address || "—" },
+    ] : [];
+
+    const detailDeals = s.contactDeals.map((d) => ({
+      title: d.title, stage: d.stage, valueText: money(d.value), closeText: dateText(d.expectedClose),
+      stageStyle: this.tagStyle(STAGE_TONE[d.stage] || STAGE_TONE.Lead),
+    }));
+
+    const detailActivities = s.activities.map((a) => ({
+      type: a.type, note: a.note, when: dateText(a.at),
+      typeStyle: this.tagStyle(TYPE_TONE[a.type] || TYPE_TONE.Note) + "flex: none;",
+    }));
+
+    const activityTypes = (this.TYPES || ["Call", "Email", "Meeting", "Note"]).map((t) => ({
+      label: t, onClick: () => this.setState({ actType: t }),
+      style: `cursor: pointer; font-family: inherit; ${t === s.actType ? "background: var(--color-accent); color: #fff;" : ""}`,
+    }));
+
+    const columns = stages.map((st) => {
+      const deals = s.allDeals.filter((d) => d.stage === st);
+      const total = deals.reduce((n, d) => n + (d.value || 0), 0);
+      const over = s.dragOver === st;
+      return {
+        stage: st,
+        meta: deals.length ? `${deals.length} · ${money(total)}` : "0",
+        empty: deals.length === 0,
+        onDragOver: (e) => { e.preventDefault(); if (s.dragOver !== st) this.setState({ dragOver: st }); },
+        onDragLeave: () => { if (s.dragOver === st) this.setState({ dragOver: null }); },
+        onDrop: (e) => { e.preventDefault(); this.drop(st); },
+        style: `flex: none; width: 250px; padding: 13.2px; border-radius: 28px; display: flex; flex-direction: column; gap: 8.8px; transition: background 120ms; background: ${over ? "var(--color-accent-200)" : "var(--color-neutral-100)"}; outline: ${over ? "2px dashed var(--color-accent)" : "none"}; outline-offset: -4px;`,
+        deals: deals.map((d) => ({
+          title: d.title, valueText: money(d.value), contactName: d.contactName,
+          onDragStart: () => this.setState({ dragging: d.id }),
+          onDragEnd: () => this.setState({ dragging: null, dragOver: null }),
+          onOpenContact: (e) => { e.stopPropagation(); this.setState({ view: "contacts" }); this.select(d.contactId); },
+          style: `display: flex; flex-direction: column; gap: 4.4px; cursor: grab; transition: box-shadow 120ms, transform 120ms; opacity: ${s.dragging === d.id ? 0.45 : 1};`,
+        })),
+      };
+    });
+
+    const openTotal = s.allDeals.filter((d) => d.stage !== "Won" && d.stage !== "Lost").reduce((n, d) => n + d.value, 0);
+
+    const groups = [];
+    for (const r of s.tests) {
+      let g = groups.find((x) => x.name === r.group);
+      if (!g) { g = { name: r.group, rows: [] }; groups.push(g); }
+      g.rows.push({
+        name: r.name, failed: !r.pass, error: r.error || "", ms: `${Math.round(r.ms)}ms`,
+        dotStyle: `flex: none; width: 12px; height: 12px; margin-top: 5px; border-radius: 999px; background: ${r.pass ? "var(--color-accent-2-500)" : "var(--color-accent-600)"};`,
+      });
+    }
+    const passed = s.tests.filter((t) => t.pass).length;
+    const allPass = s.tests.length > 0 && passed === s.tests.length;
+
+    const form = s.form;
+    let formFields = [];
+    if (form && form.kind === "contact") {
+      const defs = [
+        ["name", "Name", "text", "Full name"], ["company", "Company", "text", "Where they work"],
+        ["jobTitle", "Job title", "text", ""], ["email", "Email", "email", ""],
+        ["phone", "Phone", "tel", ""], ["website", "Website", "text", ""],
+        ["address", "Address", "text", ""], ["tags", "Tags", "text", "Comma separated"],
+      ];
+      formFields = defs.map(([name, label, type, ph]) => ({
+        name, label, type, placeholder: ph, value: form.values[name], isText: true, isSelect: false,
+        wrapStyle: name === "address" || name === "tags" ? "grid-column: 1 / -1;" : "",
+      }));
+    } else if (form) {
+      formFields = [
+        { name: "title", label: "Deal title", type: "text", placeholder: "What is the work?", value: form.values.title, isText: true, isSelect: false, wrapStyle: "grid-column: 1 / -1;" },
+        { name: "value", label: "Value (€)", type: "number", placeholder: "0", value: form.values.value, isText: true, isSelect: false, wrapStyle: "" },
+        { name: "expectedClose", label: "Expected close", type: "date", placeholder: "", value: form.values.expectedClose, isText: true, isSelect: false, wrapStyle: "" },
+        { name: "stage", label: "Stage", type: "text", value: form.values.stage, options: stages, isSelect: true, isText: false, wrapStyle: "grid-column: 1 / -1;" },
+      ];
+    }
+
+    return {
+      testsEnabled,
+      isContacts: s.view === "contacts", isDeals: s.view === "deals", isTests: s.view === "tests",
+      goContacts: () => this.setState({ view: "contacts" }),
+      goDeals: () => this.setState({ view: "deals" }),
+      goTests: () => { if (!s.testsRan) this.runTests(); else this.setState({ view: "tests" }); },
+      tabContacts: this.tab("contacts"), tabDeals: this.tab("deals"), tabTests: this.tab("tests"),
+
+      search: s.search, onSearch: this.onSearch, tagChips, contactRows,
+      noContacts: s.loaded && s.contacts.length === 0,
+      newContact: () => this.openContactForm(null),
+      editContact: () => this.openContactForm(s.contact),
+      newDeal: () => this.openDealForm(),
+
+      hasDetail: !!c, noDetail: s.loaded && !c,
+      detailName: c ? c.name : "", detailRole: c ? `${c.jobTitle} · ${c.company}` : "",
+      detailTags: c ? c.tags : [], detailFields,
+      detailDeals, noDetailDeals: !!c && detailDeals.length === 0,
+      detailActivities, noDetailActivities: !!c && detailActivities.length === 0,
+      activityTypes, actNote: s.actNote, onActNote: (e) => this.setState({ actNote: e.target.value }),
+      logActivity: this.logActivity, actError: s.actError, hasActError: !!s.actError,
+
+      columns,
+      pipelineSummary: `${s.allDeals.length} deals · ${money(openTotal)} open — drag a card to move it between stages`,
+
+      runTests: this.runTests, testGroups: groups,
+      testSummary: s.tests.length ? `${passed} of ${s.tests.length} passing` : "Running…",
+      testSummaryStyle: this.tagStyle(allPass ? ["var(--color-accent-2-500)", "#fff"] : s.tests.length ? ["var(--color-accent-300)", "var(--color-accent-900)"] : ["var(--color-neutral-200)", "var(--color-neutral-800)"]),
+
+      showForm: !!form, formFields, onFieldChange: this.onFieldChange,
+      formTitle: form ? (form.kind === "contact" ? (form.id ? "Edit contact" : "New contact") : `New deal for ${c ? c.name : ""}`) : "",
+      formSubmitLabel: form && form.id ? "Save" : "Create",
+      formError: s.formError, hasFormError: !!s.formError,
+      closeForm: () => this.setState({ form: null, formError: "" }),
+      submitForm: this.submitForm,
+    };
+  }
+}
+</script>
+</body>
+</html>
