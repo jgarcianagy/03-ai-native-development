@@ -21,7 +21,14 @@ There is one pipeline, no automation, and no separate company entity — see [CL
 make run            # backend API on :8091
 make run-frontend    # frontend on :8092
 make test            # backend test suite
+make test-frontend   # frontend services-layer tests (Node)
+make test-integration  # API tests against the Docker Compose stack
+make test-e2e        # Playwright browser tests against the Docker Compose stack
 ```
+
+CI/CD runs all of these on GitHub Actions and, once GCP is configured and a
+reviewer approves, deploys `main` to Google Cloud (Cloud Run behind
+Identity-Aware Proxy): see [_docs/deploy-gcp.md](_docs/deploy-gcp.md#cicd-github-actions).
 
 ## Interface
 

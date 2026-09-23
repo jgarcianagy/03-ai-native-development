@@ -1,0 +1,7 @@
+# Layered on top of ../docker-compose.yaml by the integration test suite.
+# Publishes the app on a different host port so the suite can run alongside
+# a dev stack that is already bound to 8001.
+services:
+  app:
+    ports: !override
+      - "18001:8000"

@@ -1,0 +1,9 @@
+{
+  "name": "simple-crm-frontend",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node build.mjs",
+    "test": "node run-tests.mjs"
+  }
+}

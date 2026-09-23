@@ -232,6 +232,7 @@ const DEFAULT_CREDENTIALS = { username: "admin", password: "admin123" };
 export function createHttpService(options = {}) {
   const baseUrl = (options.baseUrl || DEFAULT_BASE_URL).replace(/\/$/, "");
   const credentials = options.credentials || DEFAULT_CREDENTIALS;
+  const fetchFn = options.fetch || ((...args) => fetch(...args));
   let tokenPromise = null;
 
   function getToken() {
@@ -243,15 +244,20 @@ export function createHttpService(options = {}) {
     return tokenPromise;
   }
 
-  async function request(path, { method = "GET", body, auth = false } = {}) {
+  async function request(path, { method = "GET", body, auth = false, retried = false } = {}) {
     const headers = {};
     if (body !== undefined) headers["Content-Type"] = "application/json";
     if (auth) headers.Authorization = `Bearer ${await getToken()}`;
-    const res = await fetch(`${baseUrl}${path}`, {
+    const res = await fetchFn(`${baseUrl}${path}`, {
       method,
       headers,
       body: body !== undefined ? JSON.stringify(body) : undefined,
     });
+    // Tokens expire server-side; log in again once and repeat the request.
+    if (res.status === 401 && auth && !retried) {
+      tokenPromise = null;
+      return request(path, { method, body, auth, retried: true });
+    }
     const data = res.status === 204 ? null : await res.json().catch(() => null);
     if (!res.ok) throw new Error((data && data.error) || `Request failed with status ${res.status}`);
     return data;

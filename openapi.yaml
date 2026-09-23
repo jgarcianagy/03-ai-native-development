@@ -19,8 +19,32 @@ tags:
   - name: Contacts
   - name: Deals
   - name: Activities
+  - name: Health
 
 paths:
+  /health:
+    get:
+      tags: [Health]
+      operationId: getHealth
+      summary: Liveness and database connectivity
+      description: >
+        Used by deploy verification. `version` is the deployed image tag
+        (`APP_VERSION`), or `dev` when unset.
+      security: []
+      responses:
+        "200":
+          description: The app is up and the database is reachable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Health"
+        "503":
+          description: The database is unreachable (`status` is `unavailable`)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Health"
+
   /pipeline:
     get:
       tags: [Pipeline]
@@ -393,6 +417,16 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/Stage"
+
+    Health:
+      type: object
+      required: [status, version]
+      properties:
+        status:
+          type: string
+          enum: [ok, unavailable]
+        version:
+          type: string
 
     Contact:
       type: object

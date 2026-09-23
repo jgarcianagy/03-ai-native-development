@@ -1,5 +1,5 @@
 // Test suite for the services layer. Each test gets a fresh zero-latency mock.
-import { createMockService, STAGES, ACTIVITY_TYPES } from "./crm-service.js";
+import { createMockService, createHttpService, STAGES, ACTIVITY_TYPES } from "./crm-service.js";
 
 const fresh = () => createMockService({ latency: 0 });
 
@@ -170,6 +170,21 @@ export const tests = [
     c.tags.push("Hacked");
     eq((await s.getContact("c1")).name, "Marisol Ferrer", "name intact");
     ok(!(await s.getContact("c1")).tags.includes("Hacked"), "tags intact");
+  } },
+
+  { group: "HTTP", name: "logs in again once when a token has expired", fn: async () => {
+    const calls = [];
+    let logins = 0;
+    const json = (status, body) => ({ status, ok: status < 400, json: async () => body });
+    const fakeFetch = async (url, init) => {
+      calls.push(`${init.method} ${url.replace("http://api.test", "")}`);
+      if (url.endsWith("/auth/login")) return json(200, { access_token: `t${++logins}` });
+      if (init.headers.Authorization === "Bearer t1") return json(401, { detail: "Invalid or expired token" });
+      return json(201, { id: "c1", name: "Retried" });
+    };
+    const s = createHttpService({ baseUrl: "http://api.test", fetch: fakeFetch });
+    eq((await s.createContact({ name: "Retried", company: "R Co" })).name, "Retried", "request succeeds after re-login");
+    eq(calls.join(", "), "POST /auth/login, POST /contacts, POST /auth/login, POST /contacts", "one re-login, one retry");
   } },
 
   { group: "Isolation", name: "two service instances do not share state", fn: async () => {

@@ -10,6 +10,14 @@ The product should optimize for:
 
 Do not expand the scope unless explicitly requested.
 
+## Documents
+- `_docs/process.md` - how work is organized (roles, lifecycle)
+- `_docs/task-template.md` - template used to groom a task before implementation
+- `_docs/team/pm.md` - PM role: grooms an issue into the template before anyone implements it
+- `_docs/team/software-engineer.md` - Engineer role: implements one groomed issue at a time
+- `_docs/team/qa-engineer.md` - QA role: verifies a finished issue against its acceptance criteria
+- `_docs/deploy-gcp.md` - deploying to Google Cloud (Cloud Run + Cloud SQL) via `deploy/gcp.sh`
+
 ## Core Domain Model
 
 ### Contact

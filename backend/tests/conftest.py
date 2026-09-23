@@ -1,3 +1,7 @@
+import os
+
+os.environ.setdefault("SDIP_DATABASE_URL", "sqlite:///./test_crm.db")
+
 import pytest
 from fastapi.testclient import TestClient
 

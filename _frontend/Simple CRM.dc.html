@@ -102,7 +102,7 @@
             <div style="display: flex; flex-direction: column; gap: 13.2px">
               <h3 style="font-family: var(--font-heading); font-size: 22px; margin: 0; font-weight: 400">Deals</h3>
               <sc-for list="{{ detailDeals }}" as="d" hint-placeholder-count="2">
-                <div style="display: flex; align-items: center; gap: 13.2px; padding: 13.2px 17.6px; background: var(--color-neutral-100); border-radius: 16px; flex-wrap: wrap">
+                <div class="crm-row" onClick="{{ d.onOpen }}" style="display: flex; align-items: center; gap: 13.2px; padding: 13.2px 17.6px; background: var(--color-neutral-100); border-radius: 16px; flex-wrap: wrap; cursor: pointer">
                   <span style="font-weight: 600; font-size: 15px">{{ d.title }}</span>
                   <span class="tag" style="{{ d.stageStyle }}">{{ d.stage }}</span>
                   <span style="margin-left: auto; font-size: 15px; color: var(--color-neutral-700)">{{ d.valueText }}</span>
@@ -168,7 +168,7 @@
               <span style="font-size: 13px; color: var(--color-neutral-700)">{{ col.meta }}</span>
             </div>
             <sc-for list="{{ col.deals }}" as="d" hint-placeholder-count="2">
-              <div class="card crm-card" draggable="true" onDragStart="{{ d.onDragStart }}" onDragEnd="{{ d.onDragEnd }}" style="{{ d.style }}">
+              <div class="card crm-card" draggable="true" onClick="{{ d.onOpen }}" onDragStart="{{ d.onDragStart }}" onDragEnd="{{ d.onDragEnd }}" style="{{ d.style }}">
                 <span style="font-weight: 600; font-size: 15px; text-wrap: pretty">{{ d.title }}</span>
                 <span style="font-size: 14px; color: var(--color-neutral-700)">{{ d.valueText }}</span>
                 <button class="btn btn-ghost" onClick="{{ d.onOpenContact }}" style="align-self: flex-start; padding: 2px 8.8px; font-size: 13px; height: auto; min-height: 0">{{ d.contactName }}</button>
@@ -215,6 +215,9 @@
     <div class="dialog-backdrop" style="position: fixed; inset: 0; display: grid; place-items: center; padding: 26.4px; z-index: 20">
       <div class="dialog" style="width: min(560px, 100%); max-height: 86vh; overflow: auto">
         <h2 class="dialog-title" style="font-family: var(--font-heading); font-weight: 400">{{ formTitle }}</h2>
+        <sc-if value="{{ hasFormContactLink }}" hint-placeholder-val="{{ false }}">
+          <button class="btn btn-ghost" onClick="{{ goFormContact }}" style="align-self: flex-start; margin: -8.8px 0 8.8px; padding: 2px 8.8px; font-size: 13px; height: auto; min-height: 0">View contact: {{ formContactName }}</button>
+        </sc-if>
         <div class="dialog-body" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 13.2px">
           <sc-for list="{{ formFields }}" as="f" hint-placeholder-count="6">
             <label class="field" style="{{ f.wrapStyle }}">
@@ -346,6 +349,20 @@ class Component extends DCLogic {
     });
   }
 
+  openDealDetail(deal) {
+    this.setState({
+      formError: "",
+      form: {
+        kind: "deal", id: deal.id,
+        dealContactId: deal.contactId, dealContactName: deal.contactName,
+        values: {
+          title: deal.title, value: deal.value, stage: deal.stage,
+          expectedClose: (deal.expectedClose || "").slice(0, 10),
+        },
+      },
+    });
+  }
+
   onFieldChange = (e) => {
     const { name, value } = e.target;
     this.setState((s) => ({ form: Object.assign({}, s.form, { values: Object.assign({}, s.form.values, { [name]: value }) }) }));
@@ -363,10 +380,15 @@ class Component extends DCLogic {
         await this.select(saved.id);
         await this.refreshDeals();
       } else {
-        await this.api.createDeal(Object.assign({}, v, { contactId: this.state.selectedId }));
+        const payload = { title: v.title, value: v.value, stage: v.stage, expectedClose: v.expectedClose };
+        if (form.id) {
+          await this.api.updateDeal(form.id, payload);
+        } else {
+          await this.api.createDeal(Object.assign({}, payload, { contactId: this.state.selectedId }));
+        }
         this.setState({ form: null, formError: "" });
-        await this.reloadSelected();
         await this.refreshDeals();
+        if (this.state.selectedId === form.dealContactId || !form.id) await this.reloadSelected();
       }
     } catch (err) {
       this.setState({ formError: err.message });
@@ -438,6 +460,7 @@ class Component extends DCLogic {
     const detailDeals = s.contactDeals.map((d) => ({
       title: d.title, stage: d.stage, valueText: money(d.value), closeText: dateText(d.expectedClose),
       stageStyle: this.tagStyle(STAGE_TONE[d.stage] || STAGE_TONE.Lead),
+      onOpen: () => this.openDealDetail(d),
     }));
 
     const detailActivities = s.activities.map((a) => ({
@@ -464,6 +487,7 @@ class Component extends DCLogic {
         style: `flex: none; width: 250px; padding: 13.2px; border-radius: 28px; display: flex; flex-direction: column; gap: 8.8px; transition: background 120ms; background: ${over ? "var(--color-accent-200)" : "var(--color-neutral-100)"}; outline: ${over ? "2px dashed var(--color-accent)" : "none"}; outline-offset: -4px;`,
         deals: deals.map((d) => ({
           title: d.title, valueText: money(d.value), contactName: d.contactName,
+          onOpen: () => this.openDealDetail(d),
           onDragStart: () => this.setState({ dragging: d.id }),
           onDragEnd: () => this.setState({ dragging: null, dragOver: null }),
           onOpenContact: (e) => { e.stopPropagation(); this.setState({ view: "contacts" }); this.select(d.contactId); },
@@ -538,8 +562,19 @@ class Component extends DCLogic {
       testSummaryStyle: this.tagStyle(allPass ? ["var(--color-accent-2-500)", "#fff"] : s.tests.length ? ["var(--color-accent-300)", "var(--color-accent-900)"] : ["var(--color-neutral-200)", "var(--color-neutral-800)"]),
 
       showForm: !!form, formFields, onFieldChange: this.onFieldChange,
-      formTitle: form ? (form.kind === "contact" ? (form.id ? "Edit contact" : "New contact") : `New deal for ${c ? c.name : ""}`) : "",
+      formTitle: form
+        ? form.kind === "contact"
+          ? (form.id ? "Edit contact" : "New contact")
+          : (form.id ? "Edit deal" : `New deal for ${c ? c.name : ""}`)
+        : "",
       formSubmitLabel: form && form.id ? "Save" : "Create",
+      hasFormContactLink: !!(form && form.kind === "deal" && form.id),
+      formContactName: form && form.kind === "deal" && form.id ? form.dealContactName : "",
+      goFormContact: () => {
+        const cid = form && form.dealContactId;
+        this.setState({ form: null, formError: "", view: "contacts" });
+        if (cid) this.select(cid);
+      },
       formError: s.formError, hasFormError: !!s.formError,
       closeForm: () => this.setState({ form: null, formError: "" }),
       submitForm: this.submitForm,

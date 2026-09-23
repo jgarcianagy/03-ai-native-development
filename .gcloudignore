@@ -1,0 +1,12 @@
+.git
+**/.venv
+**/__pycache__
+**/*.pyc
+**/.pytest_cache
+**/*.db
+**/.DS_Store
+_frontend/dist
+backend/tests
+integration_tests
+_docs
+e2e_tests

@@ -10,3 +10,9 @@ __pycache__/
 # Editor
 .vscode/
 .idea/
+
+# Frontend build output
+_frontend/dist/
+
+# Playwright
+e2e_tests/test-results/

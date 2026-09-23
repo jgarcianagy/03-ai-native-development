@@ -1,0 +1,188 @@
+name: CI/CD
+
+# Pull requests run the tests. Pushes to main also deploy to GCP, once GCP
+# is configured (the GCP_PROJECT repository variable is set) and a reviewer
+# approves the `production` environment.
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  # Cancel superseded PR runs, but never interrupt a deploy on main.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    # Explicit bash adds -o pipefail, so a failing command in a pipeline fails the step.
+    shell: bash
+
+env:
+  PYTHON_VERSION: "3.12"
+  NODE_VERSION: "22"
+  # The image built and tested in stack-tests, handed to the deploy job.
+  APP_IMAGE: crm-integration-tests-app
+  IMAGE_ARTIFACT: app-image
+
+jobs:
+  backend-tests:
+    name: Backend tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6.8.0
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - run: make test
+
+  frontend-tests:
+    name: Frontend tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: _frontend
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - run: npm test
+      - name: Production build
+        run: npm run build
+
+  dependency-audit:
+    name: Dependency audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6.8.0
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      # Known vulnerabilities in the pinned runtime dependencies (the image's).
+      - run: uvx pip-audit --strict --disable-pip --no-deps -r backend/requirements.txt
+
+  stack-tests:
+    name: Integration + E2E (Docker Compose)
+    needs: [backend-tests, frontend-tests]
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      # Same isolated stack the integration suite manages (integration_tests/conftest.py).
+      COMPOSE: docker compose -p crm-integration-tests -f docker-compose.yaml -f integration_tests/docker-compose.test.yaml
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6.8.0
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Build the Compose stack
+        run: $COMPOSE build
+
+      # The suite starts the stack from an empty volume (it also restarts the
+      # app to test persistence). CRM_IT_KEEP leaves it up for the E2E step.
+      - name: Integration tests
+        env:
+          CRM_IT_KEEP: "1"
+        run: make test-integration
+
+      - name: Install Playwright browser
+        working-directory: e2e_tests
+        run: uv run --with 'pytest-playwright>=0.7,<1' playwright install --with-deps chromium
+
+      - name: End-to-end tests
+        working-directory: e2e_tests
+        env:
+          CRM_BASE_URL: http://localhost:18001
+        run: >-
+          uv run --with 'pytest>=8,<9' --with 'pytest-playwright>=0.7,<1' --with 'httpx>=0.27,<1'
+          pytest --tracing retain-on-failure --screenshot only-on-failure --output test-results
+
+      - name: Stack logs
+        if: failure()
+        run: $COMPOSE logs --no-color
+
+      - name: Upload Playwright traces
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: playwright-traces
+          path: e2e_tests/test-results
+          if-no-files-found: ignore
+
+      # Deploy exactly the image these tests passed against, not a rebuild.
+      - name: Save the tested image
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: docker save "$APP_IMAGE" | gzip > app-image.tar.gz
+
+      - name: Upload the tested image
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: ${{ env.IMAGE_ARTIFACT }}
+          path: app-image.tar.gz
+          retention-days: 3
+          if-no-files-found: error
+
+      - name: Tear down
+        if: always()
+        run: $COMPOSE down -v
+
+  deploy:
+    name: Deploy to GCP
+    needs: [stack-tests, dependency-audit]
+    # Skipped until GCP is set up (deploy/gcp.sh setup-ci prints the variables to set).
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && vars.GCP_PROJECT != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment:
+      name: production
+      url: ${{ steps.verify.outputs.url }}
+    permissions:
+      contents: read
+      id-token: write # GitHub OIDC token, exchanged for the deployer service account
+    env:
+      GCP_PROJECT: ${{ vars.GCP_PROJECT }}
+      GCP_REGION: ${{ vars.GCP_REGION }}
+      # Tag the image with the full commit SHA; /api/health reports it back.
+      CRM_IMAGE_TAG: ${{ github.sha }}
+      CRM_LOCAL_IMAGE: crm-integration-tests-app
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+
+      - name: Download the tested image
+        uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5.0.0
+        with:
+          name: ${{ env.IMAGE_ARTIFACT }}
+
+      - name: Load the tested image
+        run: gunzip -c app-image.tar.gz | docker load
+
+      - name: Authenticate to Google Cloud (OIDC)
+        uses: google-github-actions/auth@c200f3691d83b41bf9bbd8638997a462592937ed # v2.1.13
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_DEPLOY_SERVICE_ACCOUNT }}
+
+      - uses: google-github-actions/setup-gcloud@e427ad8a34f8676edf47cf7d7925499adf3eb74f # v2.2.1
+
+      - name: Push the tested image
+        run: ./deploy/gcp.sh push
+
+      # Fails, leaving the previous revision serving, if the new revision
+      # doesn't pass its /api/health startup probe (see gcp.sh release).
+      - name: Release to Cloud Run
+        run: ./deploy/gcp.sh release
+
+      - name: Verify the new revision serves all traffic
+        id: verify
+        run: |
+          url="$(./deploy/gcp.sh verify | tail -n1)"
+          echo "url=$url" >> "$GITHUB_OUTPUT"

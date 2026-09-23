@@ -1,16 +1,22 @@
-"""In-memory data store for contacts, deals, and activities.
+"""SQLAlchemy-backed data store for contacts, deals, and activities.
 
-A plain dict-backed store is enough for this MVP (no persistence, no
-concurrency concerns beyond FastAPI's single-process dev usage).
+Persistence goes through whichever database SDIP_DATABASE_URL (see
+app.database) points at. Each method opens and commits its own short
+session so the module-level `store` instance below can be shared across
+requests the same way the previous in-memory store was.
 """
 from __future__ import annotations
 
-import itertools
-from dataclasses import dataclass, field
+import os
 from datetime import date, datetime, timezone
-from typing import Dict, List, Optional
+from typing import List, Optional
 
-from . import models
+from sqlalchemy import delete, select, update
+from sqlalchemy.orm import Session
+
+from . import models, schema
+from .database import Base, engine, session_scope
+from .db_models import ActivityORM, ContactORM, DealORM, IdCounterORM
 from .errors import NotFoundError, ValidationError
 
 PIPELINE_STAGES: List[str] = [s.value for s in models.Stage]
@@ -21,15 +27,56 @@ def _now() -> datetime:
     return datetime.now(timezone.utc)
 
 
-@dataclass
-class Store:
-    contacts: Dict[str, models.Contact] = field(default_factory=dict)
-    deals: Dict[str, models.Deal] = field(default_factory=dict)
-    activities: Dict[str, models.Activity] = field(default_factory=dict)
-    _contact_ids: "itertools.count" = field(default_factory=lambda: itertools.count(1))
-    _deal_ids: "itertools.count" = field(default_factory=lambda: itertools.count(1))
-    _activity_ids: "itertools.count" = field(default_factory=lambda: itertools.count(1))
+def _split_tags(raw: str) -> List[str]:
+    return [tag for tag in raw.split(",") if tag] if raw else []
 
+
+def _join_tags(tags: List[str]) -> str:
+    return ",".join(tags)
+
+
+def _next_id(session: Session, prefix: str) -> str:
+    """Allocate the next `{prefix}{n}` id from the prefix's row in id_counters.
+
+    The UPDATE locks that row until the transaction commits, so concurrent
+    creates (across threads or instances) always get distinct numbers.
+    """
+    value = session.execute(
+        update(IdCounterORM)
+        .where(IdCounterORM.name == prefix)
+        .values(value=IdCounterORM.value + 1)
+        .returning(IdCounterORM.value)
+    ).scalar_one_or_none()
+    if value is None:
+        raise RuntimeError(f"No id counter for prefix {prefix!r}; run the database migrations")
+    return f"{prefix}{value}"
+
+
+def _contact_to_model(row: ContactORM) -> models.Contact:
+    return models.Contact(
+        id=row.id,
+        name=row.name,
+        email=row.email,
+        phone=row.phone,
+        company=row.company,
+        jobTitle=row.job_title,
+        address=row.address,
+        website=row.website,
+        tags=_split_tags(row.tags),
+    )
+
+
+def _activity_to_model(row: ActivityORM) -> models.Activity:
+    return models.Activity(
+        id=row.id,
+        contactId=row.contact_id,
+        type=models.ActivityType(row.type),
+        note=row.note,
+        at=row.at,
+    )
+
+
+class Store:
     # ---- pipeline -----------------------------------------------------
 
     def get_pipeline(self) -> models.Pipeline:
@@ -40,7 +87,10 @@ class Store:
     def list_contacts(
         self, search: Optional[str] = None, tags: Optional[List[str]] = None
     ) -> List[models.Contact]:
-        results = list(self.contacts.values())
+        with session_scope() as session:
+            rows = session.execute(select(ContactORM)).scalars().all()
+            results = [_contact_to_model(r) for r in rows]
+
         if search:
             needle = search.lower()
             results = [
@@ -55,11 +105,15 @@ class Store:
             results = [c for c in results if required.issubset(set(c.tags))]
         return sorted(results, key=lambda c: c.name.lower())
 
-    def get_contact(self, contact_id: str) -> models.Contact:
-        contact = self.contacts.get(contact_id)
-        if contact is None:
+    def _get_contact_row(self, session: Session, contact_id: str) -> ContactORM:
+        row = session.get(ContactORM, contact_id)
+        if row is None:
             raise NotFoundError(f"No contact with id {contact_id}")
-        return contact
+        return row
+
+    def get_contact(self, contact_id: str) -> models.Contact:
+        with session_scope() as session:
+            return _contact_to_model(self._get_contact_row(session, contact_id))
 
     def create_contact(self, data: models.ContactInput) -> models.Contact:
         if not data.name or not data.name.strip():
@@ -67,91 +121,96 @@ class Store:
         if not data.company or not data.company.strip():
             raise ValidationError("Contact company is required")
 
-        contact_id = f"c{next(self._contact_ids)}"
-        contact = models.Contact(
-            id=contact_id,
-            name=data.name.strip(),
-            email=(data.email or "").strip(),
-            phone=(data.phone or "").strip(),
-            company=data.company.strip(),
-            jobTitle=(data.jobTitle or "").strip(),
-            address=(data.address or "").strip(),
-            website=(data.website or "").strip(),
-            tags=list(data.tags or []),
-        )
-        self.contacts[contact_id] = contact
-        return contact
+        with session_scope() as session:
+            contact_id = _next_id(session, "c")
+            row = ContactORM(
+                id=contact_id,
+                name=data.name.strip(),
+                email=(data.email or "").strip(),
+                phone=(data.phone or "").strip(),
+                company=data.company.strip(),
+                job_title=(data.jobTitle or "").strip(),
+                address=(data.address or "").strip(),
+                website=(data.website or "").strip(),
+                tags=_join_tags(list(data.tags or [])),
+            )
+            session.add(row)
+            session.flush()
+            return _contact_to_model(row)
 
     def update_contact(self, contact_id: str, patch: models.ContactInput) -> models.Contact:
-        contact = self.get_contact(contact_id)
-
         update = patch.model_dump(exclude_unset=True)
-        if "name" in update:
-            if not update["name"] or not update["name"].strip():
-                raise ValidationError("Contact name is required")
-            contact.name = update["name"].strip()
-        if "company" in update:
-            if not update["company"] or not update["company"].strip():
-                raise ValidationError("Contact company is required")
-            contact.company = update["company"].strip()
-        if "email" in update:
-            contact.email = update["email"] or ""
-        if "phone" in update:
-            contact.phone = update["phone"] or ""
-        if "jobTitle" in update:
-            contact.jobTitle = update["jobTitle"] or ""
-        if "address" in update:
-            contact.address = update["address"] or ""
-        if "website" in update:
-            contact.website = update["website"] or ""
-        if "tags" in update:
-            contact.tags = list(update["tags"] or [])
 
-        self.contacts[contact_id] = contact
-        self._sync_denormalized_deal_fields(contact)
-        return contact
+        with session_scope() as session:
+            row = self._get_contact_row(session, contact_id)
+
+            if "name" in update:
+                if not update["name"] or not update["name"].strip():
+                    raise ValidationError("Contact name is required")
+                row.name = update["name"].strip()
+            if "company" in update:
+                if not update["company"] or not update["company"].strip():
+                    raise ValidationError("Contact company is required")
+                row.company = update["company"].strip()
+            if "email" in update:
+                row.email = update["email"] or ""
+            if "phone" in update:
+                row.phone = update["phone"] or ""
+            if "jobTitle" in update:
+                row.job_title = update["jobTitle"] or ""
+            if "address" in update:
+                row.address = update["address"] or ""
+            if "website" in update:
+                row.website = update["website"] or ""
+            if "tags" in update:
+                row.tags = _join_tags(list(update["tags"] or []))
+
+            session.flush()
+            return _contact_to_model(row)
 
     def list_tags(self) -> List[str]:
-        tags = {tag for contact in self.contacts.values() for tag in contact.tags}
+        with session_scope() as session:
+            raw_values = session.execute(select(ContactORM.tags)).scalars().all()
+        tags = {tag for raw in raw_values for tag in _split_tags(raw)}
         return sorted(tags)
 
     # ---- deals ------------------------------------------------------------
 
-    def _sync_denormalized_deal_fields(self, contact: models.Contact) -> None:
-        for deal in self.deals.values():
-            if deal.contactId == contact.id:
-                deal.contactName = contact.name
-                deal.company = contact.company
-
-    def _enrich_deal(self, deal: models.Deal) -> models.Deal:
-        contact = self.contacts.get(deal.contactId)
-        if contact is not None:
-            deal.contactName = contact.name
-            deal.company = contact.company
-        return deal
+    def _enrich_deal(self, session: Session, row: DealORM) -> models.Deal:
+        contact = session.get(ContactORM, row.contact_id)
+        return models.Deal(
+            id=row.id,
+            contactId=row.contact_id,
+            title=row.title,
+            value=row.value,
+            stage=models.Stage(row.stage),
+            expectedClose=row.expected_close,
+            contactName=contact.name if contact else None,
+            company=contact.company if contact else None,
+        )
 
     def list_deals(
         self, contact_id: Optional[str] = None, stage: Optional[str] = None
     ) -> List[models.Deal]:
-        results = list(self.deals.values())
-        if contact_id:
-            results = [d for d in results if d.contactId == contact_id]
-        if stage:
-            results = [d for d in results if d.stage.value == stage]
-        return [self._enrich_deal(d) for d in results]
+        with session_scope() as session:
+            stmt = select(DealORM)
+            if contact_id:
+                stmt = stmt.where(DealORM.contact_id == contact_id)
+            if stage:
+                stmt = stmt.where(DealORM.stage == stage)
+            rows = session.execute(stmt).scalars().all()
+            return [self._enrich_deal(session, r) for r in rows]
 
     def get_deal(self, deal_id: str) -> models.Deal:
-        deal = self.deals.get(deal_id)
-        if deal is None:
-            raise NotFoundError(f"No deal with id {deal_id}")
-        return self._enrich_deal(deal)
+        with session_scope() as session:
+            row = session.get(DealORM, deal_id)
+            if row is None:
+                raise NotFoundError(f"No deal with id {deal_id}")
+            return self._enrich_deal(session, row)
 
     def create_deal(self, data: models.DealInput) -> models.Deal:
         if not data.contactId:
             raise ValidationError("A deal must belong to a contact")
-        contact = self.contacts.get(data.contactId)
-        if contact is None:
-            raise ValidationError(f"No contact with id {data.contactId}")
         if not data.title or not data.title.strip():
             raise ValidationError("Deal title is required")
 
@@ -159,83 +218,94 @@ class Store:
         if stage_value not in PIPELINE_STAGES:
             raise ValidationError(f"Unknown stage: {stage_value}")
 
-        deal_id = f"d{next(self._deal_ids)}"
-        deal = models.Deal(
-            id=deal_id,
-            contactId=data.contactId,
-            title=data.title.strip(),
-            value=data.value or 0,
-            stage=models.Stage(stage_value),
-            expectedClose=data.expectedClose,
-            contactName=contact.name,
-            company=contact.company,
-        )
-        self.deals[deal_id] = deal
-        return deal
+        with session_scope() as session:
+            contact = session.get(ContactORM, data.contactId)
+            if contact is None:
+                raise ValidationError(f"No contact with id {data.contactId}")
+
+            deal_id = _next_id(session, "d")
+            row = DealORM(
+                id=deal_id,
+                contact_id=data.contactId,
+                title=data.title.strip(),
+                value=data.value or 0,
+                stage=stage_value,
+                expected_close=data.expectedClose,
+            )
+            session.add(row)
+            session.flush()
+            return self._enrich_deal(session, row)
 
     def update_deal(self, deal_id: str, patch: models.DealInput) -> models.Deal:
-        deal = self.deals.get(deal_id)
-        if deal is None:
-            raise NotFoundError(f"No deal with id {deal_id}")
-
         update = patch.model_dump(exclude_unset=True)
 
-        if "contactId" in update:
-            new_contact_id = update["contactId"]
-            if not new_contact_id:
-                raise ValidationError("A deal must belong to a contact")
-            contact = self.contacts.get(new_contact_id)
-            if contact is None:
-                raise ValidationError(f"No contact with id {new_contact_id}")
-            deal.contactId = new_contact_id
+        with session_scope() as session:
+            row = session.get(DealORM, deal_id)
+            if row is None:
+                raise NotFoundError(f"No deal with id {deal_id}")
 
-        if "title" in update:
-            if not update["title"] or not update["title"].strip():
-                raise ValidationError("Deal title is required")
-            deal.title = update["title"].strip()
+            if "contactId" in update:
+                new_contact_id = update["contactId"]
+                if not new_contact_id:
+                    raise ValidationError("A deal must belong to a contact")
+                if session.get(ContactORM, new_contact_id) is None:
+                    raise ValidationError(f"No contact with id {new_contact_id}")
+                row.contact_id = new_contact_id
 
-        if "stage" in update:
-            stage_value = update["stage"]
-            if stage_value not in PIPELINE_STAGES:
-                raise ValidationError(f"Unknown stage: {stage_value}")
-            deal.stage = models.Stage(stage_value)
+            if "title" in update:
+                if not update["title"] or not update["title"].strip():
+                    raise ValidationError("Deal title is required")
+                row.title = update["title"].strip()
 
-        if "value" in update:
-            deal.value = update["value"] or 0
+            if "stage" in update:
+                stage_value = update["stage"]
+                if stage_value not in PIPELINE_STAGES:
+                    raise ValidationError(f"Unknown stage: {stage_value}")
+                row.stage = stage_value
 
-        if "expectedClose" in update:
-            deal.expectedClose = update["expectedClose"]
+            if "value" in update:
+                row.value = update["value"] or 0
 
-        self.deals[deal_id] = deal
-        return self._enrich_deal(deal)
+            if "expectedClose" in update:
+                row.expected_close = update["expectedClose"]
+
+            session.flush()
+            return self._enrich_deal(session, row)
 
     # ---- activities ---------------------------------------------------
 
     def list_activities(self, contact_id: str) -> List[models.Activity]:
-        self.get_contact(contact_id)  # raises NotFoundError if missing
-        results = [a for a in self.activities.values() if a.contactId == contact_id]
+        with session_scope() as session:
+            if session.get(ContactORM, contact_id) is None:
+                raise NotFoundError(f"No contact with id {contact_id}")
+            stmt = select(ActivityORM).where(ActivityORM.contact_id == contact_id)
+            rows = session.execute(stmt).scalars().all()
+            results = [_activity_to_model(r) for r in rows]
         return sorted(results, key=lambda a: a.at, reverse=True)
 
     def create_activity(self, data: models.ActivityInput) -> models.Activity:
         if not data.contactId:
             raise ValidationError("An activity must belong to a contact")
-        if self.contacts.get(data.contactId) is None:
-            raise ValidationError(f"No contact with id {data.contactId}")
         if data.type not in ACTIVITY_TYPES:
             raise ValidationError(f"Unknown activity type: {data.type}")
         if not data.note or not data.note.strip():
             raise ValidationError("Activity note is required")
 
-        activity_id = f"a{next(self._activity_ids)}"
-        activity = models.Activity(
-            id=activity_id,
-            contactId=data.contactId,
-            type=models.ActivityType(data.type),
-            note=data.note.strip(),
-            at=data.at or _now(),
-        )
-        self.activities[activity_id] = activity
-        return activity
+        with session_scope() as session:
+            if session.get(ContactORM, data.contactId) is None:
+                raise ValidationError(f"No contact with id {data.contactId}")
+
+            activity_id = _next_id(session, "a")
+            row = ActivityORM(
+                id=activity_id,
+                contact_id=data.contactId,
+                type=data.type,
+                note=data.note.strip(),
+                at=data.at or _now(),
+            )
+            session.add(row)
+            session.flush()
+            return _activity_to_model(row)
 
 
 def seed(store: Store) -> None:
@@ -339,21 +409,46 @@ def seed(store: Store) -> None:
         )
 
 
+ID_PREFIXES = ("c", "d", "a")
+
+# Production sets this to "false" so the demo contacts and deals never land
+# in a real database.
+SEED_DEMO_DATA = os.environ.get("SDIP_SEED_DEMO_DATA", "true").lower() != "false"
+
+
+def init_db() -> None:
+    """Run any pending schema migrations. Safe to call repeatedly."""
+    schema.upgrade_database(engine)
+
+
+def _is_empty(session: Session) -> bool:
+    return session.execute(select(ContactORM.id).limit(1)).first() is None
+
+
 def new_seeded_store() -> Store:
-    store = Store()
-    seed(store)
-    return store
+    """Return a Store bound to the configured database.
+
+    Demo data is seeded only if enabled and the database is currently
+    empty, so restarting the app against a persistent database doesn't
+    wipe existing data.
+    """
+    init_db()
+    result = Store()
+    if SEED_DEMO_DATA:
+        with session_scope() as session:
+            empty = _is_empty(session)
+        if empty:
+            seed(result)
+    return result
 
 
 def reset(target: Store) -> None:
-    """Reset an existing Store in place and reseed it. Used by tests so they
-    can share the module-level `store` instance that routers import."""
-    target.contacts.clear()
-    target.deals.clear()
-    target.activities.clear()
-    target._contact_ids = itertools.count(1)
-    target._deal_ids = itertools.count(1)
-    target._activity_ids = itertools.count(1)
+    """Empty all tables and reseed. Used by tests so they can share the
+    module-level `store` instance that routers import."""
+    with session_scope() as session:
+        for table in reversed(Base.metadata.sorted_tables):
+            session.execute(delete(table))
+        session.add_all(IdCounterORM(name=prefix, value=0) for prefix in ID_PREFIXES)
     seed(target)
 
 
